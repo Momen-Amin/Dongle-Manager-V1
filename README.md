@@ -17,12 +17,14 @@ This is an automated deployment script for the **Mowjat Dongle Manager**, a prod
 ✅ **Responsive Design** - Works on all screen sizes (desktop, tablet, mobile)
 ✅ **Asterisk Management** - Reload and restart Asterisk from the interface
 
+![Alt text](/Mowjat_Dongle_Manager_1.png)
+
 ## System Requirements
 - **OS:** CentOS 7 x64 (or compatible)
 - **Web Server:** Apache (already installed and configured)
 - **PHP:** Version 7.4 or higher
-- **Asterisk:** Version 19 with Chan_Dongle module
-- **FreePBX:** Version 16 (optional, for GUI)
+- **Asterisk:** Version 13+ with Chan_Dongle module
+- **FreePBX:** Version 15+ (optional, for GUI)
 - **Root Access:** Required for installation
 
 ## Quick Installation
