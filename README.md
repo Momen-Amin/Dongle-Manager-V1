@@ -17,7 +17,7 @@ This is an automated deployment script for the **Mowjat Dongle Manager**, a prod
 
 ✅ **Signal Strength** - Visual signal strength indicators
 
-✅ **Telegram Notifications** - Get alerts when dongles go online/offline
+✅ **Telegram Notifications** - Get alerts when dongles go offline/online
 
 ✅ **Responsive Design** - Works on all screen sizes (desktop, tablet, mobile)
 
