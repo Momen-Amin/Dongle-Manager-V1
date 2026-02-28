@@ -1,0 +1,2279 @@
+#!/bin/bash
+echo
+echo
+echo
+echo "=========== BY WWW.MOWJAT.COM ===========";
+echo "  __  __  _____        __  _   _  _____  ";
+echo " |  \/  |/ _ \ \      / / | | / \|_   _| ";
+echo " | |\/| | | | \ \ /\ / /  | |/ _ \ | |   ";
+echo " | |  | | |_| |\ V  V / |_| / ___ \| |   ";
+echo " |_|  |_|\___/  \_/\_/ \___/_/   \_\_|   ";
+echo "                                         ";
+echo "============ FREEDOM Connect ============";
+echo
+
+sleep 3
+
+################################################################################
+# Mowjat Dongle Manager Deployment Script
+# Version: 1 | Build: 8 (All Issues Fixed)
+# Description: Automated deployment script for Mowjat Dongle Manager
+# Author: Mowjat | FREEDOM Connect.
+# Date: 2025-01-03
+################################################################################
+
+set -e  # Exit on error
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration
+BASE_DIR="/var/www/html/dongle-manager"
+IMAGES_DIR="${BASE_DIR}/images"
+TG_DIR="${BASE_DIR}/tg"
+API_DIR="${BASE_DIR}/api"
+LOG_FILE="/var/log/dongle-manager-deployment.log"
+
+################################################################################
+# Helper Functions
+################################################################################
+
+print_header() {
+    echo -e "${BLUE}================================================${NC}"
+    echo -e "${BLUE}$1${NC}"
+    echo -e "${BLUE}================================================${NC}"
+}
+
+print_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+print_error() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠ $1${NC}"
+}
+
+print_info() {
+    echo -e "${BLUE}ℹ $1${NC}"
+}
+
+log_message() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+################################################################################
+# Pre-deployment Checks
+################################################################################
+
+check_prerequisites() {
+    print_header "Checking Prerequisites"
+    
+    # Check if running as root
+    if [ "$EUID" -ne 0 ]; then
+        print_error "This script must be run as root"
+        exit 1
+    fi
+    print_success "Running as root"
+    
+    # Check if Apache is installed
+    if ! command -v httpd &> /dev/null && ! command -v apache2 &> /dev/null; then
+        print_error "Apache is not installed"
+        exit 1
+    fi
+    print_success "Apache is installed"
+    
+    # Check if PHP is installed
+    if ! command -v php &> /dev/null; then
+        print_error "PHP is not installed"
+        exit 1
+    fi
+    print_success "PHP is installed ($(php -v | head -n 1))"
+    
+    # Check if Asterisk is installed
+    if ! command -v asterisk &> /dev/null; then
+        print_warning "Asterisk not found in PATH, but continuing..."
+    else
+        print_success "Asterisk is installed"
+    fi
+    
+    # Check if curl is installed
+    if ! command -v curl &> /dev/null; then
+        print_error "curl is not installed. Installing..."
+        yum install -y curl
+    fi
+    print_success "curl is available"
+    
+    log_message "Prerequisites check completed"
+}
+
+################################################################################
+# Directory Structure Creation
+################################################################################
+
+create_directory_structure() {
+    print_header "Creating Directory Structure"
+    
+    # Create base directory
+    if [ -d "$BASE_DIR" ]; then
+        print_warning "Directory $BASE_DIR already exists. Backing up..."
+        mv "$BASE_DIR" "${BASE_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
+        log_message "Backed up existing directory"
+    fi
+    
+    mkdir -p "$BASE_DIR"
+    print_success "Created base directory: $BASE_DIR"
+    
+    # Create subdirectories
+    mkdir -p "$IMAGES_DIR"
+    print_success "Created images directory: $IMAGES_DIR"
+    
+    mkdir -p "$TG_DIR"
+    print_success "Created Telegram directory: $TG_DIR"
+    
+    mkdir -p "$API_DIR"
+    print_success "Created API directory: $API_DIR"
+    
+    log_message "Directory structure created successfully"
+}
+
+################################################################################
+# Download Assets
+################################################################################
+
+download_assets() {
+    print_header "Downloading Assets"
+    
+    # Download favicon
+    print_info "Downloading favicon..."
+    cd "$IMAGES_DIR"
+    if curl -LJO "https://raw.githubusercontent.com/Momen-Amin/Public_Scripts/main/MJ-images/mowjat-favicon.ico" 2>&1 | tee -a "$LOG_FILE"; then
+        if [ -f "mowjat-favicon.ico" ]; then
+            print_success "Favicon downloaded successfully"
+        else
+            print_error "Failed to download favicon - file not found"
+            exit 1
+        fi
+    else
+        print_error "Failed to download favicon"
+        exit 1
+    fi
+    
+    # Download logo
+    print_info "Downloading logo..."
+    if curl -LJO "https://raw.githubusercontent.com/Momen-Amin/Public_Scripts/main/MJ-images/mowjat-logo.png" 2>&1 | tee -a "$LOG_FILE"; then
+        if [ -f "mowjat-logo.png" ]; then
+            print_success "Logo downloaded successfully"
+        else
+            print_error "Failed to download logo - file not found"
+            exit 1
+        fi
+    else
+        print_error "Failed to download logo"
+        exit 1
+    fi
+    
+    cd - > /dev/null
+    log_message "Assets downloaded successfully"
+}
+
+################################################################################
+# Create Empty Index Files
+################################################################################
+
+create_empty_index_files() {
+    print_header "Creating Empty Index Files"
+    
+    # Create empty index.php in images directory
+    cat > "${IMAGES_DIR}/index.php" <<'EOF'
+<?php
+// Directory access forbidden
+http_response_code(403);
+header('HTTP/1.0 403 Forbidden');
+exit('Directory access is forbidden.');
+?>
+EOF
+    print_success "Created ${IMAGES_DIR}/index.php"
+    
+    # Create empty index.php in tg directory
+    cat > "${TG_DIR}/index.php" <<'EOF'
+<?php
+// Directory access forbidden
+http_response_code(403);
+header('HTTP/1.0 403 Forbidden');
+exit('Directory access is forbidden.');
+?>
+EOF
+    print_success "Created ${TG_DIR}/index.php"
+    
+    # Create empty index.php in api directory
+    cat > "${API_DIR}/index.php" <<'EOF'
+<?php
+// Directory access forbidden
+http_response_code(403);
+header('HTTP/1.0 403 Forbidden');
+exit('Directory access is forbidden.');
+?>
+EOF
+    print_success "Created ${API_DIR}/index.php"
+    
+    log_message "Empty index files created"
+}
+
+################################################################################
+# Create Main Index File (PHP)
+################################################################################
+
+create_index_file() {
+    print_header "Creating Main Index File"
+    
+    cat > "${BASE_DIR}/index.php" <<'INDEXEOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mowjat | Dongle Manager</title>
+    <link rel="icon" type="image/x-icon" href="images/mowjat-favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #131925;
+            --bg-card: #1a2332;
+            --bg-card-hover: #212d42;
+            --accent-primary: #00d4ff;
+            --accent-secondary: #ff6b35;
+            --accent-success: #00ff88;
+            --accent-warning: #ffb800;
+            --accent-danger: #ff3366;
+            --text-primary: #e8edf5;
+            --text-secondary: #8b9bb5;
+            --text-muted: #5a6b85;
+            --border-color: #2a3749;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, #0d1520 50%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .container {
+            max-width: 1900px;
+            margin: 0 auto;
+            padding: 1.5rem;
+            flex: 1;
+            width: 100%;
+        }
+        
+        header {
+            margin-bottom: 1.5rem;
+        }
+        
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .header-branding {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        
+        .logo-container img {
+            height: 50px;
+            width: auto;
+        }
+        
+        .title-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        
+        h1 {
+            font-family: 'Poppins', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
+        }
+        
+        h1 .brand-name {
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d4ff 0%, #0099ff 50%, #00d4ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+            letter-spacing: 0.02em;
+        }
+        
+        h1 .separator {
+            color: var(--accent-primary);
+            font-weight: 300;
+            margin: 0 0.5rem;
+        }
+        
+        h1 .subtitle {
+            font-weight: 400;
+            color: var(--text-primary);
+        }
+        
+        .page-subtitle {
+            font-size: 0.9rem;
+            font-weight: 300;
+            color: var(--text-secondary);
+            letter-spacing: 0.02em;
+            margin-left: 0.2rem;
+        }
+        
+        .header-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .asterisk-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+        
+        .asterisk-status.offline {
+            border-color: var(--accent-danger);
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-success);
+            box-shadow: 0 0 10px var(--accent-success);
+            animation: pulse 2s infinite;
+        }
+        
+        .status-indicator.offline {
+            background: var(--accent-danger);
+            box-shadow: 0 0 10px var(--accent-danger);
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-card {
+            background: var(--bg-card);
+            padding: 1rem;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        
+        .stat-card:hover {
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
+        }
+        
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+        }
+        
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        
+        .controls-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .search-box {
+            flex: 1;
+            min-width: 250px;
+            max-width: 600px;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+        }
+        
+        .filter-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .filter-btn {
+            padding: 0.7rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.85rem;
+        }
+        
+        .filter-btn:hover {
+            border-color: var(--accent-primary);
+            color: var(--text-primary);
+        }
+        
+        .filter-btn.active {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+            border-color: var(--accent-primary);
+        }
+        
+        .table-wrapper {
+            background: var(--bg-card);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        thead {
+            background: var(--bg-secondary);
+        }
+        
+        th {
+            padding: 1rem;
+            text-align: center;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
+        }
+        
+        tbody tr {
+            border-top: 1px solid var(--border-color);
+            transition: background 0.2s ease;
+        }
+        
+        tbody tr:hover {
+            background: var(--bg-card-hover);
+        }
+        
+        tbody tr.offline {
+            opacity: 0.6;
+        }
+        
+        td {
+            padding: 1rem;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        
+        .status-badge.online {
+            background: rgba(0, 255, 136, 0.15);
+            color: var(--accent-success);
+        }
+        
+        .status-badge.offline {
+            background: rgba(255, 51, 102, 0.15);
+            color: var(--accent-danger);
+        }
+        
+        .badge-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        
+        .call-status {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .call-status-main {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 0.3rem;
+        }
+        
+        .call-duration {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-primary);
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+        
+        .call-details {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            margin-top: 0.2rem;
+        }
+        
+        .call-status.idle {
+            color: var(--text-muted);
+        }
+        
+        .call-status.ringing {
+            color: var(--accent-warning);
+        }
+        
+        .call-status.in-call {
+            color: var(--accent-success);
+        }
+        
+        .call-status.out-call {
+            color: var(--accent-primary);
+        }
+        
+        .signal-bar-mini {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .signal-bar-container {
+            width: 60px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .signal-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-danger) 0%, var(--accent-warning) 50%, var(--accent-success) 100%);
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+        
+        .signal-percent {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-width: 35px;
+        }
+        
+        .actions-cell {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Poppins', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-primary {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: #00a3cc;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+        }
+        
+        .btn-danger {
+            background: var(--accent-danger);
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            background: #cc0033;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 51, 102, 0.3);
+        }
+        
+        .btn-warning {
+            background: var(--accent-warning);
+            color: var(--bg-primary);
+        }
+        
+        .btn-warning:hover:not(:disabled) {
+            background: #cc9200;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 184, 0, 0.3);
+        }
+        
+        .btn-reload {
+            background: var(--accent-warning);
+            color: var(--bg-primary);
+            border: 1px solid var(--accent-warning);
+        }
+        
+        .btn-reload:hover:not(:disabled) {
+            background: #cc9200;
+            border-color: #cc9200;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 184, 0, 0.3);
+        }
+        
+        .btn-restart {
+            background: var(--accent-danger);
+            color: white;
+            border: 1px solid var(--accent-danger);
+        }
+        
+        .btn-restart:hover:not(:disabled) {
+            background: #cc0033;
+            border-color: #cc0033;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 51, 102, 0.3);
+        }
+        
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 14, 23, 0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .loading-spinner {
+            border: 4px solid rgba(0, 212, 255, 0.2);
+            border-top: 4px solid var(--accent-primary);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .notification {
+            position: fixed;
+            top: 5%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 1.5rem 2.5rem;
+            border-radius: 12px;
+            background: var(--bg-card);
+            border: 2px solid var(--border-color);
+            color: var(--text-primary);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            animation: popIn 0.3s ease-out;
+            z-index: 10000;
+            min-width: 300px;
+            text-align: center;
+            font-weight: 500;
+            font-size: 1rem;
+        }
+        
+        .notification.success {
+            border-color: var(--accent-success);
+            background: rgba(0, 255, 136, 0.2);
+            color: var(--accent-success);
+        }
+        
+        .notification.error {
+            border-color: var(--accent-danger);
+            background: rgba(255, 51, 102, 0.2);
+            color: var(--accent-danger);
+        }
+        
+        @keyframes popIn {
+            from {
+                transform: translate(-50%, -50%) scale(0.8);
+                opacity: 0;
+            }
+            to {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 1;
+            }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+        
+        .empty-state h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+        
+        footer {
+            padding: 1rem 1.5rem;
+            text-align: right;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 1400px) {
+            .container {
+                max-width: 100%;
+            }
+        }
+        
+        @media (max-width: 1024px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            .page-subtitle {
+                font-size: 0.8rem;
+            }
+            
+            .stats-bar {
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            }
+            
+            table {
+                font-size: 0.85rem;
+            }
+            
+            th, td {
+                padding: 0.75rem;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .header-top {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .header-branding {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+                width: 100%;
+            }
+            
+            h1 {
+                font-size: 1.5rem;
+            }
+            
+            .page-subtitle {
+                font-size: 0.75rem;
+            }
+            
+            .logo-container img {
+                height: 40px;
+            }
+            
+            .header-controls {
+                width: 100%;
+                justify-content: flex-start;
+            }
+            
+            .stats-bar {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .controls-bar {
+                flex-direction: column;
+            }
+            
+            .search-box {
+                width: 100%;
+                max-width: none;
+            }
+            
+            .filter-buttons {
+                width: 100%;
+            }
+            
+            .filter-btn {
+                flex: 1;
+            }
+            
+            table {
+                display: block;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
+            
+            .actions-cell {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.2rem;
+            }
+            
+            .page-subtitle {
+                font-size: 0.7rem;
+            }
+            
+            .stats-bar {
+                grid-template-columns: 1fr;
+            }
+            
+            th, td {
+                padding: 0.5rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="header-top">
+                <div class="header-branding">
+                    <div class="logo-container">
+                        <img src="images/mowjat-logo.png" alt="Mowjat Logo">
+                    </div>
+                    <div class="title-wrapper">
+                        <h1>
+                            <span class="brand-name">Mowjat</span><span class="separator">|</span><span class="subtitle">Dongle Manager</span>
+                        </h1>
+                        <div class="page-subtitle">Real-time USB Dongle Monitoring & Control</div>
+                    </div>
+                </div>
+                
+                <div class="header-controls">
+                    <div class="asterisk-status" id="asteriskStatus">
+                        <span class="status-indicator"></span>
+                        <span>Asterisk: <strong id="asteriskState">Checking...</strong></span>
+                    </div>
+                    <button class="btn btn-reload" onclick="reloadAsterisk()">Reload Asterisk</button>
+                    <button class="btn btn-restart" onclick="restartAsterisk()">Restart Asterisk</button>
+                </div>
+            </div>
+
+            <div class="stats-bar">
+                <div class="stat-card">
+                    <div class="stat-label">Total Dongles</div>
+                    <div class="stat-value" id="totalDongles">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Online</div>
+                    <div class="stat-value" id="onlineDongles">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active Calls</div>
+                    <div class="stat-value" id="activeCalls">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Last Updated</div>
+                    <div class="stat-value" id="lastUpdated">--:--:--</div>
+                </div>
+            </div>
+
+            <div class="controls-bar">
+                <div class="search-box">
+                    <input type="text" class="search-input" id="searchInput" placeholder="Search by ID, IMEI, IMSI, Provider, or Model...">
+                </div>
+                <div class="filter-buttons">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="online">Online</button>
+                    <button class="filter-btn" data-filter="offline">Offline</button>
+                    <button class="filter-btn" data-filter="active">Active Calls</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Dongle ID</th>
+                        <th>Status</th>
+                        <th>IMEI</th>
+                        <th>IMSI</th>
+                        <th>Provider</th>
+                        <th>Model</th>
+                        <th>Call Status</th>
+                        <th>Signal</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="dongleTableBody">
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            <h3>Loading dongles...</h3>
+                            <p>Please wait while we fetch the latest information.</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <footer>
+        Dashboard v1.0 - Build 8
+    </footer>
+
+    <script>
+        const API_URL = 'api/api.php';
+        let allDongles = [];
+        let currentFilter = 'all';
+        let searchQuery = '';
+        let callTracking = {};
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDongles();
+            loadAsteriskStatus();
+            
+            // Auto-refresh every 3 seconds (3000ms)
+            setInterval(loadDongles, 3000);
+            setInterval(loadAsteriskStatus, 10000);
+            
+            // Search functionality
+            document.getElementById('searchInput').addEventListener('input', function(e) {
+                searchQuery = e.target.value.toLowerCase();
+                filterAndRenderDongles();
+            });
+            
+            // Filter buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    currentFilter = this.dataset.filter;
+                    filterAndRenderDongles();
+                });
+            });
+        });
+        
+        async function loadAsteriskStatus() {
+            try {
+                const response = await fetch(`${API_URL}?action=asterisk_status`);
+                const result = await response.json();
+                
+                const statusElement = document.getElementById('asteriskStatus');
+                const stateElement = document.getElementById('asteriskState');
+                
+                if (result.success && result.data.running) {
+                    statusElement.classList.remove('offline');
+                    stateElement.textContent = 'Running';
+                    statusElement.querySelector('.status-indicator').classList.remove('offline');
+                } else {
+                    statusElement.classList.add('offline');
+                    stateElement.textContent = 'Offline';
+                    statusElement.querySelector('.status-indicator').classList.add('offline');
+                }
+            } catch (error) {
+                console.error('Error loading Asterisk status:', error);
+            }
+        }
+        
+        async function loadDongles() {
+            try {
+                const response = await fetch(`${API_URL}?action=list`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    allDongles = result.data;
+                    updateCallTracking(allDongles);
+                    filterAndRenderDongles();
+                    updateStats(allDongles);
+                    updateLastUpdated();
+                }
+            } catch (error) {
+                console.error('Error loading dongles:', error);
+                showNotification('Failed to load dongles', 'error');
+            }
+        }
+        
+        function updateCallTracking(dongles) {
+            dongles.forEach(dongle => {
+                const isInCall = dongle.callStatus !== 'Idle';
+                const currentTrack = callTracking[dongle.id];
+                
+                // Check if call state changed from ringing to answered
+                const wasRinging = currentTrack && currentTrack.wasRinging;
+                const isNowAnswered = (dongle.callStatus === 'Answered In-Call' || dongle.callStatus === 'Answered Out-Call');
+                
+                if (isInCall && !currentTrack) {
+                    // New call started
+                    callTracking[dongle.id] = {
+                        startTime: Date.now(),
+                        serverDuration: dongle.callDuration || 0,
+                        wasRinging: (dongle.callStatus === 'In-Call Ringing' || dongle.callStatus === 'Out-Call Ringing')
+                    };
+                } else if (isInCall && currentTrack) {
+                    // Call ongoing - check if it transitioned from ringing to answered
+                    if (wasRinging && isNowAnswered) {
+                        // Reset timer when call is answered after ringing
+                        callTracking[dongle.id] = {
+                            startTime: Date.now(),
+                            serverDuration: 0,
+                            wasRinging: false
+                        };
+                    } else {
+                        // Update server duration
+                        callTracking[dongle.id].serverDuration = dongle.callDuration || 0;
+                        callTracking[dongle.id].wasRinging = (dongle.callStatus === 'In-Call Ringing' || dongle.callStatus === 'Out-Call Ringing');
+                    }
+                } else if (!isInCall && currentTrack) {
+                    // Call ended
+                    delete callTracking[dongle.id];
+                }
+            });
+        }
+        
+        function filterAndRenderDongles() {
+            let filtered = allDongles;
+            
+            // Apply search filter - INCLUDING MODEL
+            if (searchQuery) {
+                filtered = filtered.filter(d => 
+                    d.id.toLowerCase().includes(searchQuery) ||
+                    d.imei.toLowerCase().includes(searchQuery) ||
+                    d.imsi.toLowerCase().includes(searchQuery) ||
+                    d.provider.toLowerCase().includes(searchQuery) ||
+                    d.model.toLowerCase().includes(searchQuery)
+                );
+            }
+            
+            // Apply status filter
+            if (currentFilter === 'online') {
+                filtered = filtered.filter(d => d.online);
+            } else if (currentFilter === 'offline') {
+                filtered = filtered.filter(d => !d.online);
+            } else if (currentFilter === 'active') {
+                filtered = filtered.filter(d => d.callStatus.includes('Call') || d.callStatus === 'Ringing');
+            }
+            
+            renderDongles(filtered);
+        }
+        
+        function renderDongles(dongles) {
+            const tbody = document.getElementById('dongleTableBody');
+            
+            if (dongles.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            <h3>No dongles found</h3>
+                            <p>No dongles match your search or filter criteria.</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            tbody.innerHTML = dongles.map(dongle => {
+                const track = callTracking[dongle.id];
+                const currentDuration = track ? Math.floor((Date.now() - track.startTime) / 1000) + track.serverDuration : 0;
+                
+                const callInfo = parseCallStatus(dongle, currentDuration);
+                
+                return `
+                    <tr class="${dongle.online ? 'online' : 'offline'}" data-dongle-id="${dongle.id}">
+                        <td class="dongle-id-cell">${dongle.id}</td>
+                        <td>
+                            <div class="status-badge ${dongle.online ? 'online' : 'offline'}">
+                                <span class="badge-dot"></span>
+                                ${dongle.online ? 'Online' : 'Offline'}
+                            </div>
+                        </td>
+                        <td class="mono">${dongle.imei !== 'N/A' ? dongle.imei : '-'}</td>
+                        <td class="mono">${dongle.imsi !== 'N/A' ? dongle.imsi : '-'}</td>
+                        <td>${dongle.provider !== 'N/A' ? dongle.provider : '-'}</td>
+                        <td class="mono">${dongle.model !== 'N/A' ? dongle.model : '-'}</td>
+                        <td>
+                            ${callInfo.html}
+                        </td>
+                        <td class="signal-cell">
+                            <div class="signal-bar-mini">
+                                <div class="signal-bar-container">
+                                    <div class="signal-bar-fill" style="width: ${dongle.signalStrength}%"></div>
+                                </div>
+                                <span class="signal-percent">${dongle.signalStrength}%</span>
+                            </div>
+                        </td>
+                        <td class="actions-cell">
+                            <button class="btn btn-primary" onclick="startDongle('${dongle.id}')" ${dongle.online ? 'disabled' : ''}>
+                                Enable
+                            </button>
+                            <button class="btn btn-danger" onclick="stopDongle('${dongle.id}')" ${!dongle.online ? 'disabled' : ''}>
+                                Disable
+                            </button>
+                            <button class="btn btn-warning" onclick="restartDongle('${dongle.id}')">
+                                Restart
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function parseCallStatus(dongle, duration) {
+            const status = dongle.callStatus;
+            const callerNumber = dongle.callNumber || '';
+            const destNumber = dongle.destNumber || '';
+            const direction = dongle.callDirection || '';
+            
+            if (status === 'Idle') {
+                return {
+                    html: `<div class="call-status idle"><div class="call-status-main">⚪ Idle</div></div>`
+                };
+            }
+            
+            let statusText = status;
+            let statusClass = '';
+            let icon = '';
+            let details = [];
+            
+            // IN-CALL (Incoming)
+            if (status === 'In-Call Ringing') {
+                statusClass = 'ringing';
+                icon = '📞';
+                if (callerNumber) details.push(`From: ${callerNumber}`);
+            } else if (status === 'Answered In-Call') {
+                statusClass = 'in-call';
+                icon = '📲';
+                if (callerNumber) details.push(`From: ${callerNumber}`);
+            } 
+            // OUT-CALL (Outgoing)
+            else if (status === 'Out-Call Ringing') {
+                statusClass = 'ringing';
+                icon = '📞';
+                if (destNumber) details.push(`To: ${destNumber}`);
+            } else if (status === 'Answered Out-Call') {
+                statusClass = 'out-call';
+                icon = '📱';
+                if (destNumber) details.push(`To: ${destNumber}`);
+            } else {
+                statusClass = 'idle';
+                icon = '⚪';
+            }
+            
+            let html = `<div class="call-status ${statusClass}">
+                <div class="call-status-main">
+                    ${icon} <span>${statusText}</span>
+                    ${duration > 0 ? `<span class="call-duration">${formatDuration(duration)}</span>` : ''}
+                </div>`;
+            
+            if (details.length > 0) {
+                html += `<div class="call-details">${details.join(' • ')}</div>`;
+            }
+            
+            html += `</div>`;
+            
+            return { html };
+        }
+        
+        function updateStats(dongles) {
+            document.getElementById('totalDongles').textContent = dongles.length;
+            document.getElementById('onlineDongles').textContent = dongles.filter(d => d.online).length;
+            document.getElementById('activeCalls').textContent = dongles.filter(d => 
+                d.callStatus.includes('Call') || d.callStatus === 'Ringing'
+            ).length;
+        }
+        
+        function updateLastUpdated() {
+            const now = new Date();
+            let hours = now.getHours();
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            hours = String(hours).padStart(2, '0');
+            
+            document.getElementById('lastUpdated').textContent = `${hours}:${minutes}:${seconds} ${ampm}`;
+        }
+        
+        function formatDuration(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+        
+        async function startDongle(dongleId) {
+            await performAction('start_dongle', { dongle_id: dongleId }, `Enabling ${dongleId}...`);
+        }
+        
+        async function stopDongle(dongleId) {
+            if (!confirm(`Are you sure you want to disable ${dongleId}?`)) return;
+            await performAction('stop_dongle', { dongle_id: dongleId }, `Disabling ${dongleId}...`);
+        }
+        
+        async function restartDongle(dongleId) {
+            if (!confirm(`Are you sure you want to restart ${dongleId}?`)) return;
+            await performAction('restart_dongle', { dongle_id: dongleId }, `Restarting ${dongleId}...`);
+        }
+        
+        async function reloadAsterisk() {
+            if (!confirm('Are you sure you want to reload Asterisk?')) return;
+            await performAction('reload_asterisk', {}, 'Reloading Asterisk...');
+        }
+        
+        async function restartAsterisk() {
+            if (!confirm('Are you sure you want to restart Asterisk? This will interrupt all calls!')) return;
+            await performAction('restart_asterisk', {}, 'Restarting Asterisk...');
+        }
+        
+        async function performAction(action, params, loadingMessage) {
+            showLoading(loadingMessage);
+            
+            try {
+                const formData = new FormData();
+                formData.append('action', action);
+                for (const key in params) {
+                    formData.append(key, params[key]);
+                }
+                
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(data.message || 'Action completed successfully', 'success');
+                    setTimeout(loadDongles, 1000);
+                } else {
+                    showNotification(data.error || 'Action failed', 'error');
+                }
+            } catch (error) {
+                console.error('Error performing action:', error);
+                showNotification('Failed to perform action', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        function showLoading(message) {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+        }
+        
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+        
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'popIn 0.3s ease-out reverse';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
+INDEXEOF
+    
+    print_success "Created ${BASE_DIR}/index.php"
+    log_message "Main index.php file created"
+}
+
+################################################################################
+# Create Telegram Configuration File
+################################################################################
+
+create_telegram_config() {
+    print_header "Creating Telegram Configuration File"
+    
+    cat > "${TG_DIR}/telegram_config.php" <<'TGCONFIGEOF'
+<?php
+/**
+ * Telegram Notification Configuration
+ * 
+ * Instructions:
+ * 1. Create a Telegram bot via @BotFather
+ * 2. Get your bot token
+ * 3. Get your chat ID (send message to @userinfobot)
+ * 4. Fill in the values below
+ */
+
+return [
+    // Your Telegram Bot Token from @BotFather
+    'TELEGRAM_BOT_TOKEN' => 'PUT_YOUR_TELEGRAM_BOT_TOKEN_HERE',
+    
+    // Your Telegram Chat ID (can be user ID or group ID)
+    // Get it from @userinfobot or @getmyid_bot
+    'TELEGRAM_CHAT_ID' => 'PUT_YOUR_TELEGRAM_CHAT_ID_HERE',
+    
+    // Enable or disable notifications
+    'NOTIFICATIONS_ENABLED' => true,
+    
+    // Notification settings
+    'NOTIFY_ON_ONLINE' => true,  // Send notification when dongle comes online
+    'NOTIFY_ON_OFFLINE' => true, // Send notification when dongle goes offline
+];
+TGCONFIGEOF
+    
+    print_success "Created ${TG_DIR}/telegram_config.php"
+    log_message "Telegram config file created"
+}
+
+################################################################################
+# Create Telegram Monitor Script
+################################################################################
+
+create_telegram_monitor() {
+    print_header "Creating Telegram Monitor Script"
+    
+    cat > "${TG_DIR}/telegram_monitor.php" <<'TGMONITOREOF'
+<?php
+/**
+ * Telegram Notification Monitor for Dongle Status Changes
+ * 
+ * This script monitors dongles and sends Telegram notifications when:
+ * - A dongle goes offline (was online, now offline)
+ * - A dongle comes online (was offline, now online)
+ * 
+ * Run this script via cron every minute:
+ * * * * * * /usr/bin/php /var/www/html/dongle-manager/tg/telegram_monitor.php >> /var/log/telegram-monitor.log 2>&1
+ */
+
+// Load configuration
+$configFile = __DIR__ . '/telegram_config.php';
+if (!file_exists($configFile)) {
+    error_log("Telegram config file not found: {$configFile}");
+    exit(1);
+}
+
+$config = require $configFile;
+
+// Check if notifications are enabled
+if (!$config['NOTIFICATIONS_ENABLED']) {
+    exit(0);
+}
+
+// State file to track previous dongle states
+$stateFile = __DIR__ . '/dongle_states.json';
+
+/**
+ * Send Telegram notification
+ */
+function sendTelegramNotification($botToken, $chatId, $message) {
+    $url = "https://api.telegram.org/bot{$botToken}/sendMessage";
+    
+    $data = [
+        'chat_id' => $chatId,
+        'text' => $message,
+        'parse_mode' => 'HTML'
+    ];
+    
+    $options = [
+        'http' => [
+            'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+            'method'  => 'POST',
+            'content' => http_build_query($data),
+            'timeout' => 10
+        ]
+    ];
+    
+    $context  = stream_context_create($options);
+    $result = @file_get_contents($url, false, $context);
+    
+    if ($result === FALSE) {
+        error_log("Failed to send Telegram notification");
+        return false;
+    }
+    
+    $response = json_decode($result, true);
+    if (!isset($response['ok']) || !$response['ok']) {
+        error_log("Telegram API error: " . ($response['description'] ?? 'Unknown error'));
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * Execute Asterisk command
+ */
+function execAsteriskCommand($command) {
+    $output = shell_exec("asterisk -rx '{$command}' 2>&1");
+    return $output ?: '';
+}
+
+/**
+ * Get current dongle states
+ */
+function getCurrentDongleStates() {
+    $output = execAsteriskCommand("dongle show devices");
+    
+    if (empty($output) || strpos($output, 'Unable to connect') !== false) {
+        error_log("Unable to connect to Asterisk");
+        return [];
+    }
+    
+    $dongles = [];
+    $lines = explode("\n", trim($output));
+    
+    foreach ($lines as $line) {
+        if (empty($line) || strpos($line, 'ID') === 0 || strpos($line, '---') !== false) {
+            continue;
+        }
+        
+        $parts = preg_split('/\s+/', $line, 7);
+        
+        if (count($parts) >= 3) {
+            $dongleId = $parts[0];
+            $state = $parts[2];
+            
+            // Determine if online
+            $onlineStates = ['Free', 'Dialing', 'Ring', 'Incoming', 'Outgoing'];
+            $online = in_array($state, $onlineStates);
+            
+            $dongles[$dongleId] = [
+                'online' => $online,
+                'state' => $state
+            ];
+        }
+    }
+    
+    return $dongles;
+}
+
+/**
+ * Load previous states
+ */
+function loadPreviousStates($stateFile) {
+    if (!file_exists($stateFile)) {
+        return [];
+    }
+    
+    $json = file_get_contents($stateFile);
+    return json_decode($json, true) ?: [];
+}
+
+/**
+ * Save current states
+ */
+function saveCurrentStates($stateFile, $states) {
+    file_put_contents($stateFile, json_encode($states, JSON_PRETTY_PRINT));
+}
+
+// Main execution
+try {
+    $currentStates = getCurrentDongleStates();
+    $previousStates = loadPreviousStates($stateFile);
+    
+    if (empty($currentStates)) {
+        error_log("No dongles found or Asterisk not responding");
+        exit(1);
+    }
+    
+    $notifications = [];
+    
+    // Check each dongle for state changes
+    foreach ($currentStates as $dongleId => $currentState) {
+        $wasOnline = isset($previousStates[$dongleId]) ? $previousStates[$dongleId]['online'] : null;
+        $isOnline = $currentState['online'];
+        
+        // Skip if this is the first run (no previous state)
+        if ($wasOnline === null) {
+            continue;
+        }
+        
+        // Dongle went offline
+        if ($wasOnline && !$isOnline && $config['NOTIFY_ON_OFFLINE']) {
+            $message = "🔴 <b>Dongle Offline Alert</b>\n\n";
+            $message .= "Dongle ID: <code>{$dongleId}</code>\n";
+            $message .= "Status: <b>OFFLINE</b>\n";
+            $message .= "State: {$currentState['state']}\n";
+            $message .= "Time: " . date('Y-m-d H:i:s');
+            
+            $notifications[] = $message;
+        }
+        
+        // Dongle came online
+        if (!$wasOnline && $isOnline && $config['NOTIFY_ON_ONLINE']) {
+            $message = "🟢 <b>Dongle Online Alert</b>\n\n";
+            $message .= "Dongle ID: <code>{$dongleId}</code>\n";
+            $message .= "Status: <b>ONLINE</b>\n";
+            $message .= "State: {$currentState['state']}\n";
+            $message .= "Time: " . date('Y-m-d H:i:s');
+            
+            $notifications[] = $message;
+        }
+    }
+    
+    // Send notifications
+    if (!empty($notifications)) {
+        foreach ($notifications as $notification) {
+            $success = sendTelegramNotification(
+                $config['TELEGRAM_BOT_TOKEN'],
+                $config['TELEGRAM_CHAT_ID'],
+                $notification
+            );
+            
+            if ($success) {
+                error_log("Telegram notification sent successfully");
+            } else {
+                error_log("Failed to send Telegram notification");
+            }
+            
+            // Add small delay between messages to avoid rate limiting
+            usleep(500000); // 0.5 seconds
+        }
+        
+        error_log("Processed " . count($notifications) . " Telegram notification(s)");
+    }
+    
+    // Save current states for next run
+    saveCurrentStates($stateFile, $currentStates);
+    
+} catch (Exception $e) {
+    error_log("Error in Telegram monitor: " . $e->getMessage());
+    exit(1);
+}
+
+exit(0);
+TGMONITOREOF
+    
+    print_success "Created ${TG_DIR}/telegram_monitor.php"
+    log_message "Telegram monitor script created"
+}
+
+################################################################################
+# Create API File
+################################################################################
+
+create_api_file() {
+    print_header "Creating API File"
+    
+    cat > "${API_DIR}/api.php" <<'APIEOF'
+<?php
+/**
+ * Chan_Dongle Manager API - Final Version
+ * Backend API for managing Asterisk Chan_Dongle devices
+ */
+
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST');
+header('Access-Control-Allow-Headers: Content-Type');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    exit(0);
+}
+
+class DongleManager {
+    
+    /**
+     * Execute Asterisk CLI command
+     */
+    private function execAsteriskCommand($command) {
+        $output = shell_exec("asterisk -rx '{$command}' 2>&1");
+        return $output ?: '';
+    }
+    
+    /**
+     * Check if Asterisk is actually running
+     */
+    private function isAsteriskRunning() {
+        $output = $this->execAsteriskCommand("core show version");
+        // If we get version info, Asterisk is running
+        return (strpos($output, 'Asterisk') !== false && strpos($output, 'Unable to connect') === false);
+    }
+    
+    /**
+     * Parse dongle show devices output
+     */
+    private function parseDongleDevices($output) {
+        $dongles = [];
+        $lines = explode("\n", trim($output));
+        
+        foreach ($lines as $line) {
+            if (empty($line) || strpos($line, 'ID') === 0 || strpos($line, '---') !== false) {
+                continue;
+            }
+            
+            $parts = preg_split('/\s+/', $line, 7);
+            
+            if (count($parts) >= 7) {
+                $dongleId = $parts[0];
+                $dongles[$dongleId] = [
+                    'id' => $dongleId,
+                    'group' => $parts[1],
+                    'state' => $parts[2],
+                    'rssi' => $parts[3],
+                    'mode' => $parts[4],
+                    'submode' => $parts[5],
+                    'rest' => $parts[6]
+                ];
+            }
+        }
+        
+        return $dongles;
+    }
+    
+    /**
+     * Get detailed dongle information
+     */
+    private function getDongleDetails($dongleId) {
+        $output = $this->execAsteriskCommand("dongle show device state {$dongleId}");
+        $details = [
+            'imei' => 'N/A',
+            'imsi' => 'N/A',
+            'model' => 'N/A',
+            'manufacturer' => 'N/A',
+            'firmware' => 'N/A',
+            'status' => 'Unknown',
+            'provider' => 'N/A'
+        ];
+        
+        $lines = explode("\n", $output);
+        foreach ($lines as $line) {
+            if (preg_match('/IMEI\s*[:=]\s*([0-9]+)/', $line, $match)) {
+                $details['imei'] = trim($match[1]);
+            }
+            if (preg_match('/IMSI\s*[:=]\s*([0-9]+)/', $line, $match)) {
+                $details['imsi'] = trim($match[1]);
+            }
+            if (preg_match('/Model\s*[:=]\s*(.+)/', $line, $match)) {
+                $details['model'] = trim($match[1]);
+            }
+            if (preg_match('/Manufacturer\s*[:=]\s*(.+)/', $line, $match)) {
+                $details['manufacturer'] = trim($match[1]);
+            }
+            if (preg_match('/Firmware\s*[:=]\s*(.+)/', $line, $match)) {
+                $details['firmware'] = trim($match[1]);
+            }
+            if (preg_match('/Provider\s+Name\s*[:=]\s*(.+)/', $line, $match)) {
+                $details['provider'] = trim($match[1]);
+            }
+            if (preg_match('/State\s*[:=]\s*(.+)/', $line, $match)) {
+                $details['status'] = trim($match[1]);
+            }
+        }
+        
+        // Try alternative command if needed
+        if ($details['imei'] === 'N/A' || $details['imsi'] === 'N/A') {
+            $altOutput = $this->execAsteriskCommand("dongle show device {$dongleId}");
+            $altLines = explode("\n", $altOutput);
+            
+            foreach ($altLines as $line) {
+                if (preg_match('/IMEI\s*[:=]\s*([0-9]+)/', $line, $match)) {
+                    $details['imei'] = trim($match[1]);
+                }
+                if (preg_match('/IMSI\s*[:=]\s*([0-9]+)/', $line, $match)) {
+                    $details['imsi'] = trim($match[1]);
+                }
+            }
+        }
+        
+        return $details;
+    }
+    
+    /**
+     * Get active call information for a dongle
+     */
+    private function getActiveCalls($dongleId) {
+        $callInfo = [
+            'status' => 'Idle',
+            'duration' => 0,
+            'callerNumber' => '',
+            'destNumber' => '',
+            'direction' => ''
+        ];
+        
+        // Get channel information
+        $channelOutput = $this->execAsteriskCommand("core show channels concise");
+        $channelLines = explode("\n", $channelOutput);
+        
+        foreach ($channelLines as $channelLine) {
+            if (stripos($channelLine, "Dongle/{$dongleId}") !== false) {
+                $parts = explode('!', $channelLine);
+                if (count($parts) >= 11) {
+                    $state = $parts[4]; // Channel state: Ring, Ringing, Dialing, Up, etc.
+                    $callerID = $parts[7];
+                    $duration = (int)$parts[10];
+                    
+                    // Parse state
+                    // Ringing states: Ring, Ringing, Dialing
+                    if ($state === 'Ring' || $state === 'Ringing' || $state === 'Dialing') {
+                        $callInfo['status'] = 'Ringing';
+                    } elseif ($state === 'Up') {
+                        $callInfo['status'] = 'Answered';
+                        $callInfo['duration'] = $duration;
+                    }
+                    
+                    // Store the caller ID (which is the phone number)
+                    $callInfo['callerNumber'] = $callerID;
+                    $callInfo['destNumber'] = $callerID;
+                }
+                break;
+            }
+        }
+        
+        return $callInfo;
+    }
+    
+    /**
+     * Get all dongles with full details
+     */
+    public function getAllDongles() {
+        $output = $this->execAsteriskCommand("dongle show devices");
+        
+        if (empty($output) || strpos($output, 'Unable to connect') !== false) {
+            throw new Exception("Unable to connect to Asterisk");
+        }
+        
+        $dongles = $this->parseDongleDevices($output);
+        
+        if (empty($dongles)) {
+            return [];
+        }
+        
+        $result = [];
+        foreach ($dongles as $dongleId => $dongle) {
+            $details = $this->getDongleDetails($dongleId);
+            $callInfo = $this->getActiveCalls($dongleId);
+            
+            // Determine online status - dongle is online if state is one of these
+            $state = $dongle['state'];
+            $onlineStates = ['Free', 'Dialing', 'Ring', 'Incoming', 'Outgoing'];
+            $online = in_array($state, $onlineStates);
+            
+            // Parse RSSI to signal strength
+            $rssi = (int)$dongle['rssi'];
+            $signalStrength = 0;
+            if ($rssi > 0) {
+                $signalStrength = min(100, max(0, ($rssi / 31) * 100));
+            }
+            
+            // CRITICAL: Map dongle states to call direction
+            // Based on debug files:
+            // - Incoming Ringing: State = "Ring"
+            // - Incoming Answered: State = "Incoming"
+            // - Outgoing Ringing: State = "Dialing"
+            // - Outgoing Answered: State = "Outgoing"
+            
+            $callDirection = '';
+            if ($state === 'Ring' || $state === 'Incoming') {
+                $callDirection = 'incoming';
+            } elseif ($state === 'Dialing' || $state === 'Outgoing') {
+                $callDirection = 'outgoing';
+            }
+            
+            // Build call status string
+            $callStatus = 'Idle';
+            if ($callInfo['status'] === 'Ringing') {
+                $callStatus = $callDirection === 'incoming' ? 'In-Call Ringing' : 'Out-Call Ringing';
+            } elseif ($callInfo['status'] === 'Answered') {
+                $callStatus = $callDirection === 'incoming' ? 'Answered In-Call' : 'Answered Out-Call';
+            }
+            
+            // Override direction from channel with dongle state if available
+            if ($callDirection !== '') {
+                $callInfo['direction'] = $callDirection;
+            }
+            
+            $result[] = [
+                'id' => $dongleId,
+                'online' => $online,
+                'status' => $dongle['state'],
+                'callStatus' => $callStatus,
+                'callDuration' => $callInfo['duration'],
+                'callNumber' => $callInfo['callerNumber'], // The phone number (caller for incoming, destination for outgoing)
+                'destNumber' => $callInfo['destNumber'],
+                'callDirection' => $callInfo['direction'],
+                'signalStrength' => round($signalStrength),
+                'rssi' => $rssi,
+                'imei' => $details['imei'],
+                'imsi' => $details['imsi'],
+                'vendor' => $details['manufacturer'],
+                'model' => $details['model'],
+                'firmware' => $details['firmware'],
+                'provider' => $details['provider'],
+                'group' => $dongle['group'],
+                'mode' => $dongle['mode']
+            ];
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Restart a specific dongle
+     */
+    public function restartDongle($dongleId) {
+        $output = $this->execAsteriskCommand("dongle restart now {$dongleId}");
+        $success = (strpos($output, 'restart') !== false || 
+                   strpos($output, 'restarted') !== false ||
+                   !empty($output));
+        return [
+            'success' => $success,
+            'message' => $success ? "Dongle {$dongleId} restarted" : trim($output)
+        ];
+    }
+    
+    /**
+     * Stop a specific dongle
+     */
+    public function stopDongle($dongleId) {
+        $output = $this->execAsteriskCommand("dongle stop now {$dongleId}");
+        $success = (strpos($output, 'stop') !== false || 
+                   strpos($output, 'stopped') !== false ||
+                   !empty($output));
+        return [
+            'success' => $success,
+            'message' => $success ? "Dongle {$dongleId} stopped" : trim($output)
+        ];
+    }
+    
+    /**
+     * Start a specific dongle
+     */
+    public function startDongle($dongleId) {
+        $output = $this->execAsteriskCommand("dongle start {$dongleId}");
+        $success = (strpos($output, 'start') !== false || 
+                   strpos($output, 'started') !== false ||
+                   !empty($output));
+        return [
+            'success' => $success,
+            'message' => $success ? "Dongle {$dongleId} started" : trim($output)
+        ];
+    }
+    
+    /**
+     * Reload Asterisk
+     */
+    public function reloadAsterisk() {
+        $output = $this->execAsteriskCommand("module reload chan_dongle.so");
+        return [
+            'success' => true,
+            'message' => 'Chan_Dongle module reloaded'
+        ];
+    }
+    
+    /**
+     * Restart Asterisk
+     */
+    public function restartAsterisk() {
+        $output = $this->execAsteriskCommand("core restart when convenient");
+        
+        if (strpos($output, 'not be performed') !== false) {
+            $output = $this->execAsteriskCommand("core restart gracefully");
+        }
+        
+        return [
+            'success' => true,
+            'message' => 'Asterisk restart initiated'
+        ];
+    }
+    
+    /**
+     * Get Asterisk status - ACTUALLY CHECK IF RUNNING
+     */
+    public function getAsteriskStatus() {
+        $running = $this->isAsteriskRunning();
+        
+        if ($running) {
+            $uptime = $this->execAsteriskCommand("core show uptime");
+            $channels = $this->execAsteriskCommand("core show channels count");
+            
+            return [
+                'running' => true,
+                'uptime' => trim($uptime),
+                'channels' => trim($channels)
+            ];
+        } else {
+            return [
+                'running' => false,
+                'uptime' => '',
+                'channels' => ''
+            ];
+        }
+    }
+}
+
+// Main API handler
+try {
+    $manager = new DongleManager();
+    $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
+    
+    switch ($action) {
+        case 'list':
+            $response = [
+                'success' => true,
+                'data' => $manager->getAllDongles(),
+                'timestamp' => time()
+            ];
+            break;
+            
+        case 'restart_dongle':
+            $dongleId = $_POST['dongle_id'] ?? '';
+            if (empty($dongleId)) {
+                throw new Exception('Dongle ID is required');
+            }
+            $response = $manager->restartDongle($dongleId);
+            break;
+            
+        case 'stop_dongle':
+            $dongleId = $_POST['dongle_id'] ?? '';
+            if (empty($dongleId)) {
+                throw new Exception('Dongle ID is required');
+            }
+            $response = $manager->stopDongle($dongleId);
+            break;
+            
+        case 'start_dongle':
+            $dongleId = $_POST['dongle_id'] ?? '';
+            if (empty($dongleId)) {
+                throw new Exception('Dongle ID is required');
+            }
+            $response = $manager->startDongle($dongleId);
+            break;
+            
+        case 'reload_asterisk':
+            $response = $manager->reloadAsterisk();
+            break;
+            
+        case 'restart_asterisk':
+            $response = $manager->restartAsterisk();
+            break;
+            
+        case 'asterisk_status':
+            $response = [
+                'success' => true,
+                'data' => $manager->getAsteriskStatus()
+            ];
+            break;
+            
+        default:
+            throw new Exception('Invalid action');
+    }
+    
+    echo json_encode($response);
+    
+} catch (Exception $e) {
+    http_response_code(400);
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage()
+    ]);
+}
+APIEOF
+    
+    print_success "Created ${API_DIR}/api.php"
+    log_message "API file created"
+}
+
+################################################################################
+# Set Permissions
+################################################################################
+
+set_permissions() {
+    print_header "Setting Permissions"
+    
+    # Set ownership to Apache user
+    if id "apache" &>/dev/null; then
+        APACHE_USER="apache"
+    elif id "www-data" &>/dev/null; then
+        APACHE_USER="www-data"
+    else
+        APACHE_USER="apache"
+    fi
+    
+    chown -R ${APACHE_USER}:${APACHE_USER} "$BASE_DIR"
+    print_success "Set ownership to ${APACHE_USER}:${APACHE_USER}"
+    
+    # Set directory permissions
+    find "$BASE_DIR" -type d -exec chmod 755 {} \;
+    print_success "Set directory permissions to 755"
+    
+    # Set file permissions
+    find "$BASE_DIR" -type f -exec chmod 644 {} \;
+    print_success "Set file permissions to 644"
+    
+    # Make telegram_monitor.php executable
+    chmod +x "${TG_DIR}/telegram_monitor.php"
+    print_success "Made telegram_monitor.php executable"
+    
+    log_message "Permissions set successfully"
+}
+
+################################################################################
+# Setup Cron Job
+################################################################################
+
+setup_cron() {
+    print_header "Setting Up Cron Job"
+    
+    CRON_ENTRY="* * * * * root /usr/bin/php ${TG_DIR}/telegram_monitor.php >> /var/log/telegram-monitor.log 2>&1"
+    
+    # Check if cron entry already exists
+    if grep -Fxq "$CRON_ENTRY" /etc/crontab; then
+        print_warning "Cron entry already exists"
+    else
+        echo "$CRON_ENTRY" >> /etc/crontab
+        print_success "Added cron entry to /etc/crontab"
+    fi
+    
+    # Create log file if it doesn't exist
+    touch /var/log/telegram-monitor.log
+    chmod 644 /var/log/telegram-monitor.log
+    print_success "Created telegram-monitor.log"
+    
+    log_message "Cron job setup completed"
+}
+
+################################################################################
+# Restart Apache
+################################################################################
+
+restart_apache() {
+    print_header "Restarting Apache"
+    
+    if command -v systemctl &> /dev/null; then
+        systemctl restart httpd || systemctl restart apache2
+        print_success "Apache restarted via systemctl"
+    else
+        service httpd restart || service apache2 restart
+        print_success "Apache restarted via service"
+    fi
+    
+    log_message "Apache restarted"
+}
+
+################################################################################
+# Display Summary
+################################################################################
+
+display_summary() {
+    print_header "Deployment Summary"
+    
+    echo ""
+    print_info "Installation completed successfully!"
+    echo ""
+    print_info "Installation Directory: ${GREEN}${BASE_DIR}${NC}"
+    print_info "API Endpoint: ${GREEN}${BASE_DIR}/api/api.php${NC}"
+    print_info "Telegram Config: ${GREEN}${TG_DIR}/telegram_config.php${NC}"
+    print_info "Telegram Monitor: ${GREEN}${TG_DIR}/telegram_monitor.php${NC}"
+    echo ""
+    print_info "Access your Dongle Manager at:"
+    print_success "http://YOUR_SERVER_IP/dongle-manager/"
+    echo ""
+    print_warning "Next Steps:"
+    echo "  1. Configure your Telegram bot in: ${TG_DIR}/telegram_config.php"
+    echo "  2. Test the installation by accessing the web interface"
+    echo "  3. Verify Asterisk is running and Chan_Dongle is loaded"
+    echo ""
+    print_info "Log file: ${LOG_FILE}"
+    echo ""
+}
+
+################################################################################
+# Clear History - AT THE END
+################################################################################
+
+# clear_history() {
+#    print_header "Clearing Command History"
+#    
+#    # Clear bash history for current session
+#    history -c
+#    
+#    # Write empty history to file
+#    history -w
+#    
+#    # Also clear the history file directly for good measure
+#    > ~/.bash_history
+#    
+#    print_success "Command history cleared"
+#    log_message "Command history cleared"
+# }
+################################################################################
+# Main Execution
+################################################################################
+
+main() {
+    echo ""
+    print_header "Mowjat Dongle Manager Deployment Script"
+    echo ""
+    print_info "Starting deployment..."
+    echo ""
+    
+    # Create log file
+    touch "$LOG_FILE"
+    chmod 644 "$LOG_FILE"
+    log_message "Deployment started"
+    
+    # Execute deployment steps
+    check_prerequisites
+    create_directory_structure
+    download_assets
+    create_empty_index_files
+    create_index_file
+    create_telegram_config
+    create_telegram_monitor
+    create_api_file
+    set_permissions
+    setup_cron
+    restart_apache
+    display_summary
+    
+    log_message "Deployment completed successfully"
+    
+    echo ""
+    print_success "Deployment completed successfully!"
+    echo ""
+    
+#    # Clear history at the very end
+#    clear_history
+}
+
+# Run main function
+main
+
+sleep 3
+
+
+echo
+echo
+echo
+echo "=========== BY WWW.MOWJAT.COM ===========";
+echo "  __  __  _____        __  _   _  _____  ";
+echo " |  \/  |/ _ \ \      / / | | / \|_   _| ";
+echo " | |\/| | | | \ \ /\ / /  | |/ _ \ | |   ";
+echo " | |  | | |_| |\ V  V / |_| / ___ \| |   ";
+echo " |_|  |_|\___/  \_/\_/ \___/_/   \_\_|   ";
+echo "                                         ";
+echo "============ FREEDOM Connect ============";
+echo " "
