@@ -17,6 +17,7 @@ This is an automated deployment script for the **Mowjat Dongle Manager**, a prod
 ✅ **Responsive Design** - Works on all screen sizes (desktop, tablet, mobile)
 ✅ **Asterisk Management** - Reload and restart Asterisk from the interface
 
+# Screenshot
 ![Alt text](/Mowjat_Dongle_Manager_1.png)
 
 ## System Requirements
