@@ -10,11 +10,17 @@ This is an automated deployment script for the **Mowjat Dongle Manager**, a prod
 
 ## Features
 ✅ **Real-time Monitoring** - Live status updates every 3 seconds
+
 ✅ **Dongle Control** - Start, stop, restart individual dongles
+
 ✅ **Call Tracking** - Monitor active calls with duration and direction
+
 ✅ **Signal Strength** - Visual signal strength indicators
+
 ✅ **Telegram Notifications** - Get alerts when dongles go online/offline
+
 ✅ **Responsive Design** - Works on all screen sizes (desktop, tablet, mobile)
+
 ✅ **Asterisk Management** - Reload and restart Asterisk from the interface
 
 # Screenshot
