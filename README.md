@@ -1,6 +1,6 @@
 ## Deploy command
 ```bash
-curl -sSL https://raw.githubusercontent.com/Momen-Amin/Dongle-Manager-V1/main/DongleManagerV1.1 | bash
+curl -sSL https://raw.githubusercontent.com/Momen-Amin/Dongle-Manager-V1/main/DongleManagerV1 | bash
 ```
 
 # Mowjat Dongle Manager - Deployment Guide
